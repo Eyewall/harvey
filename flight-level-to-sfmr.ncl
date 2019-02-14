@@ -12,10 +12,11 @@ load "$NCARG_ROOT/lib/ncarg/nclscripts/contrib/cd_string.ncl"
 ; wind to the SFMR wind.
 ;-------------------------------------------
 
-fldir = "/raid1/pduran/jm13/flight-level/harvey/"
+fldir = "/raid1/pduran/jm13/flight-level/harvey/test/"
 sfmrdir = "/raid1/pduran/jm13/sfmr/2017/harvey/"
 timeunits = "seconds since 2016-1-1 00:00:00"
 imgdir = "/raid1/pduran/figures/harvey/altitude/"
+bindepth = 50  ;Depth (mb) of pressure bins in which to compute wind speed ratios.
 
 ;-----------------------------------------
 ;IT IS NOT NECESSARY AT THIS TIME TO READ 
@@ -108,6 +109,21 @@ replace_ieeenan(flalt,flalt@_FillValue,0)
 replace_ieeenan(flpres,flpres@_FillValue,0)
 replace_ieeenan(sfmrv,sfmrv@_FillValue,0)
 
+;Loop through pressure bins and compute wind speed ratio for each bin.
+bincenters = ispan(275,1025,bindepth)
+nbins = dimsizes(bincenters)
+halfbin = 0.5*bindepth
+do i=0,nfiles-1
+   do j=0,nbins-1
+      binbot = bincenters(j) - halfbin
+      bintop = bincenters(j) + halfbin
+      flvbin   := flv((i,ind(flpres.ge.binbot.and.flpres.lt.bintop)))
+      sfmrvbin := sfmrv(i,ind(flpres.ge.binbot.and.flpres.lt.bintop)))
+      print( flvbin)
+      exit
+   end do
+end do
+
 ;Subsample time array for plotting. Subsample to 1-h intervals
 ;to use as horizontal axis labels.
 fltimesub = fltime(:,::3600)
@@ -148,9 +164,11 @@ do i=0,nfiles-1
    flvplot(i) = gsn_csm_xy(wks(i),fltime(i,:),flv(i,:),res)
    res@gsnLeftString = "Flight-level pressure"
    res@tiYAxisString = "Pressure (hPa)"
+   res@trYMinF = 400.
    presplot(i) = gsn_csm_xy(wks(i),fltime(i,:),flpres(i,:),res)
    res@gsnLeftString = "SFMR wind speed"
    res@tiYAxisString = "Wind speed (m s~S~-1~N~)"
+   res@trYMinF = 0.
    sfmrvplot(i) = gsn_csm_xy(wks(i),fltime(i,:),sfmrv(i,:),res)
    panelres = True
    panelres@gsnPanelMainString = filename_trim
