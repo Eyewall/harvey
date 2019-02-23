@@ -12,7 +12,7 @@ load "$NCARG_ROOT/lib/ncarg/nclscripts/contrib/cd_string.ncl"
 ; wind to the SFMR wind.
 ;-------------------------------------------
 
-fldir = "/raid1/pduran/jm13/flight-level/harvey/test/"
+fldir = "/raid1/pduran/jm13/flight-level/harvey/"
 sfmrdir = "/raid1/pduran/jm13/sfmr/2017/harvey/"
 timeunits = "seconds since 2016-1-1 00:00:00"
 imgdir = "/raid1/pduran/figures/harvey/altitude/"
@@ -49,6 +49,7 @@ flvbig   = new((/nfiles,1000000/),"float")
 fllatbig = new((/nfiles,1000000/),"float")
 fllonbig = new((/nfiles,1000000/),"float")
 flaltbig = new((/nfiles,1000000/),"float")
+flheadbig= new((/nfiles,1000000/),"integer")
 flpresbig= new((/nfiles,1000000/),"float")
 sfmrvbig = new((/nfiles,1000000/),"float")
 fltimebig= new((/nfiles,1000000/),"integer")
@@ -63,9 +64,10 @@ do i=0,nfiles-1
    fllatbig (i,:ntimes-1) = (/fldata[1]/)     
    fllonbig (i,:ntimes-1) = (/fldata[2]/)     
    flaltbig (i,:ntimes-1) = (/fldata[3]/)     
-   flpresbig(i,:ntimes-1) = (/fldata[4]/)
-   sfmrvbig (i,:ntimes-1) = (/fldata[5]/)
-   fltimebig(i,:ntimes-1) = (/fldata[6]/)
+   flheadbig(i,:ntimes-1) = (/fldata[4]/)     
+   flpresbig(i,:ntimes-1) = (/fldata[5]/)
+   sfmrvbig (i,:ntimes-1) = (/fldata[6]/)
+   fltimebig(i,:ntimes-1) = (/fldata[7]/)
 end do
 
 ;Copy variable metadata
@@ -73,9 +75,10 @@ copy_VarAtts(fldata[0],flvbig)
 copy_VarAtts(fldata[1],fllatbig)
 copy_VarAtts(fldata[2],fllonbig)
 copy_VarAtts(fldata[3],flaltbig)
-copy_VarAtts(fldata[4],flpresbig)
-copy_VarAtts(fldata[5],sfmrvbig)
-copy_VarAtts(fldata[6],fltimebig)
+copy_VarAtts(fldata[4],flheadbig)
+copy_VarAtts(fldata[5],flpresbig)
+copy_VarAtts(fldata[6],sfmrvbig)
+copy_VarAtts(fldata[7],fltimebig)
 
 ;Reduce size of arrays by chopping off trailing missing values.
 maxindex = new(nfiles,"integer")
@@ -86,6 +89,7 @@ flv   = new((/nfiles,max(maxindex)+1/),"float")
 fllat = new((/nfiles,max(maxindex)+1/),"float")
 fllon = new((/nfiles,max(maxindex)+1/),"float")
 flalt = new((/nfiles,max(maxindex)+1/),"float")
+flhead= new((/nfiles,max(maxindex)+1/),"integer")
 flpres= new((/nfiles,max(maxindex)+1/),"float")
 sfmrv = new((/nfiles,max(maxindex)+1/),"float")
 fltime= new((/nfiles,max(maxindex)+1/),"integer")
@@ -93,6 +97,7 @@ do i=0,nfiles-1
    flv   (i,0:maxindex(i)) = flvbig   (i,0:maxindex(i))
    fllat (i,0:maxindex(i)) = fllatbig (i,0:maxindex(i))
    fllon (i,0:maxindex(i)) = fllonbig (i,0:maxindex(i))
+   flhead(i,0:maxindex(i)) = flheadbig(i,0:maxindex(i))
    flalt (i,0:maxindex(i)) = flaltbig (i,0:maxindex(i))
    flpres(i,0:maxindex(i)) = flpresbig(i,0:maxindex(i))
    sfmrv (i,0:maxindex(i)) = sfmrvbig (i,0:maxindex(i))
@@ -109,20 +114,39 @@ replace_ieeenan(flalt,flalt@_FillValue,0)
 replace_ieeenan(flpres,flpres@_FillValue,0)
 replace_ieeenan(sfmrv,sfmrv@_FillValue,0)
 
+;Determine times of beginning and ending of flight legs
+printVarSummary( fltime)
+exit
+flightlegs = flight_legs(fltime,flhead)
+
+;Replace all 0 flight-level values with missing values to avoid divide by zero errors
+flv = where(flv.eq.0,flv@_FillValue,flv)
+
 ;Loop through pressure bins and compute wind speed ratio for each bin.
 bincenters = ispan(275,1025,bindepth)
 nbins = dimsizes(bincenters)
 halfbin = 0.5*bindepth
+ratios = new((/nfiles,nbins,100000/),"float")
+pressures = new((/nfiles,nbins,100000/),"float")
+nobs = new((/nfiles,nbins/),"integer")
 do i=0,nfiles-1
+   unixi = i + 1
+   print( "Processing flight "+unixi+" of "+nfiles)
    do j=0,nbins-1
       binbot = bincenters(j) - halfbin
       bintop = bincenters(j) + halfbin
-      flvbin   := flv((i,ind(flpres.ge.binbot.and.flpres.lt.bintop)))
-      sfmrvbin := sfmrv(i,ind(flpres.ge.binbot.and.flpres.lt.bintop)))
-      print( flvbin)
-      exit
+      bininds := ind(flpres(i,:).ge.binbot.and.flpres(i,:).lt.bintop)
+      if(.not.all(ismissing(bininds)))
+         flvbin   := flv(i,bininds)
+         sfmrvbin := sfmrv(i,bininds)
+         nobs(i,j) = dimsizes(flvbin)
+         ratios(i,j,:nobs(i,j)-1) = sfmrvbin/flvbin
+         pressures(i,j,:nobs(i,j)-1) = bincenters(j)
+      end if
    end do
 end do
+
+ratios_nobin = sfmrv/flv
 
 ;Subsample time array for plotting. Subsample to 1-h intervals
 ;to use as horizontal axis labels.
@@ -151,7 +175,7 @@ do i=0,nfiles-1
    res@tmXBLabels = timestr
    res@tmXBLabelFontHeightF = .015
    res@tmXBLabelAngleF = 40.
-   res@trYMinF = 0
+   res@trYMinF = 0.
    res@trXMinF = min(fltime(i,:))
    res@trXMaxF = max(fltime(i,:))
    res@tmYROn = False
@@ -174,3 +198,37 @@ do i=0,nfiles-1
    panelres@gsnPanelMainString = filename_trim
    gsn_panel(wks(i),(/altplot(i),flvplot(i),presplot(i),sfmrvplot(i)/),(/2,2/),panelres)
 end do
+
+;Draw scatterplot of ratios for all flights
+delete(wks)
+wks = gsn_open_wks("png",imgdir+"ratio-scatter-allflights.png")
+scatres = True
+;scatres@tiYAxisString = "Ratio (Flight-Level Wind Speed / SFMR Wind Speed)"
+scatres@tiYAxisString = "Ratio (SFMR Wind Speed / Flight-Level Wind Speed)"
+scatres@tiXAxisString = "Aircraft flight level (hPa)"
+scatres@tiXAxisFontHeightF = 0.02
+scatres@tiYAxisFontHeightF = 0.02
+scatres@tmXBLabelFontHeightF = .015
+scatres@tmYLLabelFontHeightF = .015
+scatres@xyMarkLineMode = "Markers"
+scatres@tmYROn = False
+scatres@tmXTOn = False
+scatplot = gsn_csm_xy(wks,ndtooned(flpres),ndtooned(ratios_nobin),scatres)
+;Plot number of observations in each flight-level bin
+Xaxislabels = (/"250-300","300-350","350-400","400-450","450-500","500-550","550-600","600-650",\
+                "650-700","700-750","750-800","800-850","850-900","900-950","950-1000","1000-1050"/)
+wks = gsn_open_wks("png",imgdir+"nobs-allflights.png")
+nobres = scatres
+nobres@tiYAxisString = "Number of Observations"
+nobres@xyMarkLineMode = "Lines"
+nobres@xyLineThicknessF = 5.
+;nobres@trXMinF = 400.
+;nobres@trXMaxF = 1000.
+nobres@tmXBMode = "Explicit"
+nobres@tmXBValues = bincenters
+nobres@tmXBLabels = Xaxislabels
+nobres@tmXBLabelAngleF = 40.
+nobres@tmXTOn = True
+plot = gsn_csm_xy(wks,bincenters,toint(dim_sum_n(nobs,0)),nobres)
+
+print( nobs)

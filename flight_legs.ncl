@@ -1,17 +1,19 @@
 ;------------------------------------------------
-; read_flight_level.ncl
+; flight_legs.ncl
 ; Patrick Duran
-; 07 February 2019
+; 22 February 2019
 ;
-; Reads and returns wind speed, lat/lon locations,
-; and time from a NOAA or USAF aircraft recon
-; flight-level data file.
+; Determines the start and ending times of flight
+; legs in reconnaissance data using the rate of
+; change of the true heading and prints to an
+; ascii file the beginning and ending times of
+; each 
 ; 
 ; ---------
 ; ARGUMENTS
 ; ---------
-; filename: The full path to the netCDF SFMR file.
-; timeunits: The units of time to use.
+; time: Times (1-D numeric array)
+; hdg: True heading (1-D numeric array)
 ;
 ; -------
 ; RETURNS
