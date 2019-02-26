@@ -118,7 +118,7 @@ elseif(char.eq."H")then   ;Read using NOAA ASCII format or netCDF file
       end if
       time = round(cd_convert(timein,timeunits),3)
       ;Set all questionable SFMR observations to missing.
-      sfmrv = where(sfmrflag.ne.0,v@_FillValue,v)
+      sfmrv = where(sfmrflag.ne.0,sfmrv@_FillValue,sfmrv)
    end if
 else
    print( "ERROR: Unknown flight-level data format. Exiting.")
