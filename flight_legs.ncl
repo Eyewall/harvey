@@ -152,7 +152,26 @@ else
    write_table("header.tmp","a",head3,"%s")
    write_table("header.tmp","a",head4,"%s")
    write_table("header.tmp","a",space,"%s")
-   
+
+   ;Set missing values
+   legstarttimes@_FillValue = -9999
+   legendtimes@_FillValue = -9999
+   legstartlats@_FillValue = -9999.
+   legstartlons@_FillValue = -9999.
+   legendlats@_FillValue = -9999.
+   legendlons@_FillValue = -9999.
+   vmax_fl@_FillValue = -9999.
+   vmax_fl_lat@_FillValue = -9999.
+   vmax_fl_lon@_FillValue = -9999.
+   vmax_fl_time@_FillValue = -9999
+   vmax_sfmr@_FillValue = -9999.
+   vmax_sfmr_lat@_FillValue = -9999.
+   vmax_sfmr_lon@_FillValue = -9999.
+   vmax_sfmr_time@_FillValue = -9999
+   vmax_pres@_FillValue = -9999.
+   ratio@_FillValue = -9999.
+   minrad@_FillValue = -9999.
+
    ;Print data to ASCII files
    filename = systemfunc("echo "+flfile+" | awk -F'/' '{print $NF}' | awk -F'.' '{print $1}'")
    outfile = outdir+filename+"-legs.txt"
