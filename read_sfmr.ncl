@@ -16,7 +16,7 @@
 ;------------------------------------------------
 
 undef("read_sfmr")
-function read_sfmr(filename:string,timeunits:string)
+function read_sfmr(filename:string,timeunits:string,cal)
 begin
 
 f = addfile(filename,"r")
@@ -52,8 +52,9 @@ sfmrmon  = toint(datesplit(:,1))
 sfmrday  = toint(datesplit(:,2))
 
 ;Convert SFMR dates and times to timeunits
-time = round(cd_inv_calendar(sfmryear,sfmrmon,sfmrday,sfmrhour,sfmrminu,sfmrsec,timeunits,0),3)
+time = round(cd_inv_calendar(sfmryear,sfmrmon,sfmrday,sfmrhour,sfmrminu,sfmrsec,timeunits,cal),3)
 time@units = timeunits
+time@_FillValue = -9999
 
 ;Output data
 return([/v,lats,lons,time/])

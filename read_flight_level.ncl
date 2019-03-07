@@ -23,12 +23,12 @@
 ;------------------------------------------------
 
 undef("read_flight-level")
-function read_flight_level(filename:string,timeunits:string)
+function read_flight_level(filename:string,timeunits:string,cal)
 begin
 
 ;Different agencies have different file formats.
 ;If the filename contains a "U", this is a USAF flight.
-;If the filename contains an "H", this is a NOAA flight.
+;If the filename contains an "H" or "I", this is a NOAA flight.
 char = systemfunc("echo "+filename+" | awk -F'/' '{print $NF}' | cut -c9")
 if(char.eq."U")then   ;Read using USAF format
    ;Details of this format here: http://www.aoml.noaa.gov/hrd/format/usaf.html
@@ -54,7 +54,7 @@ if(char.eq."U")then   ;Read using USAF format
    mm = toint(timesplit(:,1))
    ss = toint(timesplit(:,2))
    time = round(cd_inv_calendar(conform(HH,YYYY,0),conform(HH,MM,0),conform(HH,DD,0),\
-                HH,mm,ss,timeunits,0),3)
+                HH,mm,ss,timeunits,cal),3)
    ;Need to check for a change of day mid-file. This index and all subsequent
    ;indices will need to have 86400 seconds added to their final time.
    if(any(timestr.eq."00:00:00"))then
@@ -79,14 +79,45 @@ if(char.eq."U")then   ;Read using USAF format
    ;Convert kt to m/s
    v = v*0.514444
    sfmrv = sfmrv*0.514444
-elseif(char.eq."H")then   ;Read using NOAA ASCII format or netCDF file
+elseif(char.eq."H".or.char.eq."I")then   ;Read using NOAA ASCII format or netCDF file
    suffix = systemfunc("echo "+filename+" | awk -F'.' '{print $NF}'")
    if(suffix.eq."txt")then
       timestr = systemfunc("sed -e '1,4d' "+filename+" | awk '{print $1}'")  ;Time (HH:MM:SS)
-      latstr  = systemfunc("sed -e '1,4d' "+filename+" | awk '{print $2}'") ;Latitude (deg N)
-      lonstr  = systemfunc("sed -e '1,4d' "+filename+" | awk '{print $3}'") ;Longitude (deg W)
+      latstr  = systemfunc("sed -e '1,4d' "+filename+" | awk '{print $2}'")  ;Latitude (deg N)
+      lonstr  = systemfunc("sed -e '1,4d' "+filename+" | awk '{print $3}'")  ;Longitude (deg W)
+      headstr = systemfunc("sed -e '1,4d' "+filename+" | awk '{print $4}'")  ;Heading (deg)
+      presstr = systemfunc("sed -e '1,4d' "+filename+" | awk '{print $9}'")  ;Longitude (deg W)
       altstr  = systemfunc("sed -e '1,4d' "+filename+" | awk '{print $15}'") ;Radar altitude (m)
       flvstr  = systemfunc("sed -e '1,4d' "+filename+" | awk '{print $11}'") ;Flight-level wind u(kt)
+      ;Get date of beginning of flight
+      YYYYMMDD = tochar(systemfunc("head -1 "+filename+" | awk '{print $NF}' | cut -c 1-8"))
+      YYYY = toint(tostring(YYYYMMDD(0:3)))
+      MM = toint(tostring(YYYYMMDD(4:5)))
+      DD = toint(tostring(YYYYMMDD(6:7)))
+      ;Get time strings for every data record
+      timestr_split = str_split_by_length(timestr,2)
+      HH = toint(timestr_split(:,0))
+      mm = toint(timestr_split(:,1))
+      ss = toint(timestr_split(:,2))
+      ;In this format, if the data roll over into a new day, hours becomes larger than 23.
+      ;Where this is the case, replace hours with (HH-24) and subsequently add 86400 to time.
+      nextdayinds = ind(HH.gt.23)
+      if(.not.all(ismissing(nextdayinds)))then
+         HH(nextdayinds) = HH(nextdayinds) - 24
+      end if
+      ;Compute times in timeunits and add 86400 wherever necessary
+      time = round(cd_inv_calendar(conform(ss,YYYY,0),conform(ss,MM,0),conform(ss,DD,0),HH,mm,ss,timeunits,cal),3)
+      if(.not.all(ismissing(nextdayinds)))then
+         time(nextdayinds) = time(nextdayinds) + 86400
+      end if
+      ;Convert lats, lons, alt, head, pres, v, and sfmrv to correct types
+      lats = tofloat(latstr)
+      lons = tofloat(lonstr) * -1.0  ;In this format, lons are in Deg W, so convert to Deg E
+      head = round(tofloat(headstr),3)
+      pres = tofloat(presstr)
+      alt  = tofloat(altstr)
+      v    = tofloat(flvstr)
+      sfmrv= conform(v,-9999.,0)
    elseif(suffix.eq."nc")then
       f = addfile(filename,"r")
       timein  = f->Time
@@ -128,6 +159,7 @@ end if
 time@units = timeunits
 
 ;Output data
+sfmrv@_FillValue = -9999.
 return([/v,lats,lons,alt,head,pres,sfmrv,time/])
 
 end

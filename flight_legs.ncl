@@ -1,4 +1,4 @@
-load "/usr/people/pduran/progs/ncl/harvey/rad.ncl"
+load "/usr/people/pduran/progs/ncl/harvey/rad_azi.ncl"
 
 ;------------------------------------------------
 ; flight_legs.ncl
@@ -16,12 +16,16 @@ load "/usr/people/pduran/progs/ncl/harvey/rad.ncl"
 ; ARGUMENTS
 ; ---------
 ; flfile: File from which original data come (string)
-; time: Times (1-D numeric array)
+; time_fl: Times for flight-level data (1-D numeric array)
 ; hdg: True heading (1-D numeric array)
-; lat: Aircraft latitude (deg N)
-; lon: Aircraft longitude (deg E)
+; lat_fl: Aircraft latitude (deg N)
+; lon_fl: Aircraft longitude (deg E)
 ; pres: Pressure at aircraft altitude (hPa)
+; alt: Radar altitude of aircraft (m)
 ; v: Flight-level wind speed
+; time_sfmr: Times of SFMR observations
+; lat_sfmr: Latitudes of SFMR observations
+; lon_sfmr: Longitudes of SFMR observations
 ; surfv: Surface (SFMR) wind speed
 ; outdir: Directory in which to output ASCII file
 ; timeunits: Units of time (string)
@@ -37,8 +41,9 @@ load "/usr/people/pduran/progs/ncl/harvey/rad.ncl"
 ;------------------------------------------------
 
 undef("flight_legs")
-procedure flight_legs(flfile:string,time:numeric,hdg:numeric,lat:numeric,lon:numeric,\
-                      pres:numeric,v:numeric,surfv:numeric,outdir:string,timeunits:string,\
+procedure flight_legs(flfile:string,time_fl:numeric,hdg:numeric,lat_fl:numeric,lon_fl:numeric,\
+                      pres:numeric,alt:numeric,v:numeric,time_sfmr:numeric,lat_sfmr:numeric,\
+                      lon_sfmr:numeric,surfv:numeric,outdir:string,timeunits:string,\
                       names:string,btlat:float,btlon:float,bttime:numeric)
 local i, j
 begin
@@ -46,7 +51,7 @@ begin
 print( "Getting flight legs for "+flfile)
 
 ;Compute rate of change of heading
-dhdt = abs(center_finite_diff(hdg,time,False,0))
+dhdt = abs(center_finite_diff(hdg,time_fl,False,0))
 
 ;Define a "turn" as dhdt >= 2 deg/s. Loop
 ;through dhdt and find turns.
@@ -58,10 +63,10 @@ do i=1,dimsizes(dhdt)-2
    cur  = dhdt(i)
    if(.not.ismissing(prev).and..not.ismissing(cur))
       if(prev.lt.2.and.cur.ge.2)then
-      allturnstarttimes(j) = time(i)
+      allturnstarttimes(j) = time_fl(i)
       end if
       if(prev.ge.2.and.cur.lt.2)then
-         allturnendtimes(j) = time(i)
+         allturnendtimes(j) = time_fl(i)
          j = j + 1
       end if
    end if
@@ -74,10 +79,10 @@ nturns = dimsizes(allturnstarttimes)
 ;The start time of each leg is the end time of each turn.
 ;The end time of each leg is the start time of each turn.
 legdurations = allturnendtimes(1:) - allturnstarttimes(:nturns-2)
-leginds = ind(legdurations.gt.1000)
-if(all(ismissing(leginds)))then
-   print( "NO FLIGHT LEGS MEET THE MINIMUM DISTANCE THRESHOLD...SKIPPING TO NEXT FLIGHT.")
-else
+;leginds = ind(legdurations.gt.1000)
+;if(all(ismissing(leginds)))then
+;   print( "NO FLIGHT LEGS MEET THE MINIMUM DISTANCE THRESHOLD...SKIPPING TO NEXT FLIGHT.")
+;else
    turnstarttimes = allturnstarttimes(ind(legdurations.gt.1000))
    turnendtimes   = allturnendtimes(ind(legdurations.gt.1000))
    
@@ -91,14 +96,14 @@ else
       legendtimes = turnstarttimes(1:)
    end if
    
-   ;Compute radius and azimuth of each observation from storm center.
-   print( "Computing distance of all observations from storm center.")
-   radii = rad(bttime,btlat,btlon,lat,lon,time)
+   ;Compute radius and azimuth of each flight-level observation from storm center.
+   print( "Computing distance and azimuth of all observations from storm center.")
+   radazi = rad_azi(bttime,btlat,btlon,lat_fl,lon_fl,time_fl)
+   radii = radazi[0]
+   azis  = radazi[1]
    
    ;Compute minimum distance from storm center for this flight leg
    ;using the storm's best track interpolated to 1-minute intervals.
-   
-   
    ;Loop through the flight legs and get data on all of them.
    nlegs = dimsizes(legstarttimes)
    legstartlats = new(nlegs,"float")
@@ -109,47 +114,55 @@ else
    vmax_sfmr     = new(nlegs,"float")
    vmax_fl_lat   = new(nlegs,"float")
    vmax_fl_lon   = new(nlegs,"float")
+   vmax_fl_rad   = new(nlegs,"float")
+   vmax_fl_azi   = new(nlegs,"float")
    vmax_fl_time   = new(nlegs,"integer")
    vmax_sfmr_lat  = new(nlegs,"float")
    vmax_sfmr_lon  = new(nlegs,"float")
+   vmax_sfmr_rad  = new(nlegs,"float")
+   vmax_sfmr_azi  = new(nlegs,"float")
    vmax_sfmr_time = new(nlegs,"integer")
    vmax_pres      = new(nlegs,"float")
    minrad         = new(nlegs,"float")
    do i=0,nlegs-1
-      startind = ind(time.eq.legstarttimes(i))
-      endind = ind(time.eq.legendtimes(i))
-      legstartlats(i) = lat(startind)
-      legstartlons(i) = lon(startind)
-      legendlats(i) = lat(endind)
-      legendlons(i) = lon(endind)
+      startind = ind(time_fl.eq.legstarttimes(i))
+      endind = ind(time_fl.eq.legendtimes(i))
+      legstartlats(i) = lat_fl(startind)
+      legstartlons(i) = lon_fl(startind)
+      legendlats(i) = lat_fl(endind)
+      legendlons(i) = lon_fl(endind)
       vmax_fl(i)  = max(v(startind:endind))
       vmax_sfmr(i)= max(surfv(startind:endind))
       if(.not.ismissing(vmax_fl(i)))then
-         vmax_fl_lat(i)   = lat (startind+maxind(v(startind:endind)))
-         vmax_fl_lon(i)   = lon (startind+maxind(v(startind:endind)))
-         vmax_fl_time(i)  = time(startind+maxind(v(startind:endind)))
+         vmax_fl_lat(i)   = lat_fl (startind+maxind(v(startind:endind)))
+         vmax_fl_lon(i)   = lon_fl (startind+maxind(v(startind:endind)))
+         vmax_fl_rad(i)   = radii  (startind+maxind(v(startind:endind)))
+         vmax_fl_azi(i)   = azis   (startind+maxind(v(startind:endind)))
+         vmax_fl_time(i)  = time_fl(startind+maxind(v(startind:endind)))
          vmax_pres(i)     = pres(startind+maxind(v(startind:endind)))
       end if
       if(.not.ismissing(vmax_sfmr(i)))then
-         vmax_sfmr_lat(i) = lat (startind+maxind(surfv(startind:endind)))
-         vmax_sfmr_lon(i) = lon (startind+maxind(surfv(startind:endind)))
-         vmax_sfmr_time(i)= time(startind+maxind(surfv(startind:endind)))
+         vmax_sfmr_lat(i) = lat_sfmr (startind+maxind(surfv(startind:endind)))
+         vmax_sfmr_lon(i) = lon_sfmr (startind+maxind(surfv(startind:endind)))
+         vmax_sfmr_rad(i) = radii    (startind+maxind(surfv(startind:endind)))
+         vmax_sfmr_azi(i) = azis     (startind+maxind(surfv(startind:endind)))
+         vmax_sfmr_time(i)= time_sfmr(startind+maxind(surfv(startind:endind)))
       end if
       minrad(i) = min(radii(startind:endind))
    end do
    ratio = vmax_sfmr/vmax_fl   ;Wind speed ratio
    
    ;Print header for ASCII files
-   head1 = [/"Flight leg data file (space-delimited) containing, from left to right:"/]
-   head2 = [/"Leg Start Time, Leg End Time, Leg Start Lat, Leg Start Lon, Leg End Lat, Leg End Lon, Maximum Flight-Level Wind, Latitude of Maximum Flight-Level Wind, Longitude of Maximum Flight-Level Wind, Time of Maximum Flight-Level Wind, Maximum SFMR Wind, Latitude of Maximum SFMR Wind, Longitude of Maximum SFMR Wind, Time of Maximum SFMR Wind, Pressure at Flight Level when Maximum Flight-Level Wind Observed, Ratio of Maximum SFMR Wind, Maximum Flight-Level Wind (Vsfmr/Vflight), Minimum distance from storm center"/]
+;   head1 = [/"Flight leg data file (space-delimited) containing, from left to right:"/]
+;   head2 = [/"Leg Start Time, Leg End Time, Leg Start Lat, Leg Start Lon, Leg End Lat, Leg End Lon, Maximum Flight-Level Wind, Latitude of Maximum Flight-Level Wind, Longitude of Maximum Flight-Level Wind, Time of Maximum Flight-Level Wind, Maximum SFMR Wind, Latitude of Maximum SFMR Wind, Longitude of Maximum SFMR Wind, Time of Maximum SFMR Wind, Pressure at Flight Level when Maximum Flight-Level Wind Observed, Ratio of Maximum SFMR Wind, Maximum Flight-Level Wind (Vsfmr/Vflight), Minimum distance from storm center"/]
    head3 = [/"Time units: "+timeunits/]
    head4 = [/"Wind speed units: m/s"/]
    space = [/" "/]
-   write_table("header.tmp","w",head1,"%s")
-   write_table("header.tmp","a",space,"%s")
-   write_table("header.tmp","a",head2,"%s")
-   write_table("header.tmp","a",space,"%s")
-   write_table("header.tmp","a",head3,"%s")
+;   write_table("header.tmp","w",head1,"%s")
+;   write_table("header.tmp","a",space,"%s")
+;   write_table("header.tmp","a",head2,"%s")
+;   write_table("header.tmp","a",space,"%s")
+   write_table("header.tmp","w",head3,"%s")
    write_table("header.tmp","a",head4,"%s")
    write_table("header.tmp","a",space,"%s")
 
@@ -163,11 +176,15 @@ else
    vmax_fl@_FillValue = -9999.
    vmax_fl_lat@_FillValue = -9999.
    vmax_fl_lon@_FillValue = -9999.
+   vmax_fl_rad@_FillValue = -9999.
+   vmax_fl_azi@_FillValue = -9999.
    vmax_fl_time@_FillValue = -9999
    vmax_sfmr@_FillValue = -9999.
    vmax_sfmr_lat@_FillValue = -9999.
    vmax_sfmr_lon@_FillValue = -9999.
-   vmax_sfmr_time@_FillValue = -9999
+   vmax_sfmr_rad@_FillValue = -9999.
+   vmax_sfmr_azi@_FillValue = -9999.
+   vmax_sfmr_time@_FillValuw = -9999
    vmax_pres@_FillValue = -9999.
    ratio@_FillValue = -9999.
    minrad@_FillValue = -9999.
@@ -176,13 +193,15 @@ else
    filename = systemfunc("echo "+flfile+" | awk -F'/' '{print $NF}' | awk -F'.' '{print $1}'")
    outfile = outdir+filename+"-legs.txt"
    outvars = [/legstarttimes,legendtimes,legstartlats,legstartlons,legendlats,legendlons,\
-               vmax_fl,vmax_fl_lat,vmax_fl_lon,vmax_fl_time,vmax_sfmr,vmax_sfmr_lat,\
-               vmax_sfmr_lon,vmax_sfmr_time,vmax_pres,ratio,minrad/]
+               vmax_fl,vmax_fl_lat,vmax_fl_lon,vmax_fl_rad,vmax_fl_azi,vmax_fl_time,\
+               vmax_sfmr,vmax_sfmr_lat,vmax_sfmr_lon,vmax_sfmr_rad,vmax_sfmr_azi,\
+               vmax_sfmr_time,vmax_pres,ratio,minrad/]
    format = "%10i %10i %5.2f %6.2f %5.2f %6.2f "+\
-            "%5.1f %6.2f %6.2f %10i %5.1f %6.2f "+\
-            "%6.2f %10i %7.2f %5.3f %5.1f"
+            "%5.1f %6.2f %6.2f %6.2f %6.2f %10i "+\ 
+            "%5.1f %6.2f %6.2f %6.2f %6.2f "+\
+            "%10i %7.2f %5.3f %5.1f"
    write_table("data.tmp","w",outvars,format)
    
    system("cat header.tmp data.tmp > "+outfile)
-end if
+;end if
 end
