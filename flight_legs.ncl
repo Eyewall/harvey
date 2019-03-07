@@ -79,10 +79,10 @@ nturns = dimsizes(allturnstarttimes)
 ;The start time of each leg is the end time of each turn.
 ;The end time of each leg is the start time of each turn.
 legdurations = allturnendtimes(1:) - allturnstarttimes(:nturns-2)
-;leginds = ind(legdurations.gt.1000)
-;if(all(ismissing(leginds)))then
-;   print( "NO FLIGHT LEGS MEET THE MINIMUM DISTANCE THRESHOLD...SKIPPING TO NEXT FLIGHT.")
-;else
+leginds = ind(legdurations.gt.minduration)
+if(all(ismissing(leginds)))then
+   print( "NO FLIGHT LEGS MEET THE MINIMUM DISTANCE THRESHOLD...SKIPPING TO NEXT FLIGHT.")
+else
    turnstarttimes = allturnstarttimes(ind(legdurations.gt.1000))
    turnendtimes   = allturnendtimes(ind(legdurations.gt.1000))
    
@@ -203,5 +203,5 @@ legdurations = allturnendtimes(1:) - allturnstarttimes(:nturns-2)
    write_table("data.tmp","w",outvars,format)
    
    system("cat header.tmp data.tmp > "+outfile)
-;end if
+end if
 end
